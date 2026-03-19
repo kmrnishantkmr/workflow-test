@@ -21,3 +21,8 @@ jobs:
 
             - name: Verify working directory is clean
               run: Get-ChildItem
+
+            - name: sleep
+              run: |
+                  Get-ChildItem | Sort-Object LastWriteTime
+                  Start-Sleep -Seconds 500
