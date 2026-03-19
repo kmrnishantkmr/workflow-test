@@ -1,0 +1,23 @@
+name: test Windows COdeBuild Runner
+
+on: 
+    push:
+        branches: [main]
+    workflow_dispatch: 
+
+jobs:
+    test-windows:
+        runs-on:
+            - codebuild-win-dotnet-test-${{github.run_id}}-${{github.run_attempt}}
+        steps:
+            - name: Verify windows env
+              run: |
+                Write-Host "Runner OS: $env:OS"
+                Write-Host "Computer name: $env:COMPUTERNAME"
+                systeminfo | Select-String "OS Name"
+
+            - name: Verify AWS CLI
+              run: aws --version
+
+            - name: Verify working directory is clean
+              run: Get-ChildItem
