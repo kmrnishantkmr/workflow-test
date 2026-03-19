@@ -8,7 +8,7 @@ on:
 jobs:
     test-windows:
         runs-on:
-            - codebuild-win-dotnet-test-${{github.run_id}}-${{github.run_attempt}}
+            - codebuild-windows-runner-${{github.run_id}}-${{github.run_attempt}}
         steps:
             - name: Verify windows env
               run: |
