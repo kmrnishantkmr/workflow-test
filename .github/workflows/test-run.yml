@@ -1,28 +1,128 @@
-name: test Windows COdeBuild Runner
+name: Test Windows CodeBuild Runner - Caching
 
-on: 
-    push:
-        branches: [main]
-    workflow_dispatch: 
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-    test-windows:
-        runs-on:
-            - codebuild-windows-runner-${{github.run_id}}-${{github.run_attempt}}
-        steps:
-            - name: Verify windows env
-              run: |
-                Write-Host "Runner OS: $env:OS"
-                Write-Host "Computer name: $env:COMPUTERNAME"
-                systeminfo | Select-String "OS Name"
+  test-windows:
+    runs-on:
+      - codebuild-windows-runner-${{ github.run_id }}-${{ github.run_attempt }}
 
-            - name: Verify AWS CLI
-              run: aws --version
+    steps:
+      # ── 1. Basic environment verification ──────────────────────────────────
+      - name: Verify Windows environment
+        run: |
+          Write-Host "Runner OS: $env:OS"
+          Write-Host "Computer name: $env:COMPUTERNAME"
+          Write-Host "Run ID: ${{ github.run_id }}"
+          Write-Host "Run attempt: ${{ github.run_attempt }}"
+          systeminfo | Select-String "OS Name"
 
-            - name: Verify working directory is clean
-              run: Get-ChildItem
+      - name: Verify AWS CLI
+        run: aws --version
 
-            - name: sleep
-              run: |
-                  Get-ChildItem | Sort-Object LastWriteTime
-                  Start-Sleep -Seconds 500
+      # ── 2. Restore GitHub cache (if it exists from a previous run) ─────────
+      - name: Restore cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: C:\test-cache
+          key: windows-test-cache-${{ github.ref_name }}
+          restore-keys: |
+            windows-test-cache-
+
+      - name: Report cache status
+        run: |
+          if ("${{ steps.cache-restore.outputs.cache-hit }}" -eq "true") {
+            Write-Host "CACHE HIT - restored from previous run"
+            Write-Host "Cache contents:"
+            Get-ChildItem C:\test-cache | Format-Table Name, LastWriteTime, Length
+            Get-Content C:\test-cache\cache-test.txt
+          } else {
+            Write-Host "CACHE MISS - no cache found, will create one"
+          }
+
+      # ── 3. Create cache content (simulates dependency install) ─────────────
+      - name: Create or update cache content
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\test-cache | Out-Null
+
+          $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          $content = @"
+          Cache created/updated: $timestamp
+          Run ID: ${{ github.run_id }}
+          Run attempt: ${{ github.run_attempt }}
+          Branch: ${{ github.ref_name }}
+          "@
+
+          Set-Content -Path C:\test-cache\cache-test.txt -Value $content
+
+          # Simulate cached dependencies (e.g. NuGet packages)
+          1..5 | ForEach-Object {
+            Set-Content -Path "C:\test-cache\fake-package-$_.dll" -Value "fake dll content $_"
+          }
+
+          Write-Host "Cache directory contents:"
+          Get-ChildItem C:\test-cache | Format-Table Name, LastWriteTime, Length
+
+      # ── 4. Save cache back to GitHub ───────────────────────────────────────
+      - name: Save cache
+        uses: actions/cache/save@v4
+        with:
+          path: C:\test-cache
+          key: windows-test-cache-${{ github.ref_name }}
+
+      # ── 5. Create a build artifact ─────────────────────────────────────────
+      - name: Create sample build artifact
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\build-output | Out-Null
+
+          $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+          $content = @"
+          Build artifact produced by:
+          Run ID    : ${{ github.run_id }}
+          Attempt   : ${{ github.run_attempt }}
+          Branch    : ${{ github.ref_name }}
+          Timestamp : $timestamp
+          Computer  : $env:COMPUTERNAME
+          "@
+
+          Set-Content -Path C:\build-output\build-result.txt -Value $content
+
+          # Simulate multiple output files
+          Set-Content -Path C:\build-output\MyApp.exe    -Value "fake exe binary"
+          Set-Content -Path C:\build-output\MyApp.pdb    -Value "fake debug symbols"
+          Set-Content -Path C:\build-output\MyApp.config -Value "<config>sample</config>"
+
+          Write-Host "Build output contents:"
+          Get-ChildItem C:\build-output | Format-Table Name, LastWriteTime, Length
+
+      # ── 6. Upload artifact to GitHub ───────────────────────────────────────
+      - name: Upload artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: C:\build-output\
+          retention-days: 7
+
+      # ── 7. Final summary ───────────────────────────────────────────────────
+      - name: Summary
+        run: |
+          Write-Host "================================================"
+          Write-Host "TEST SUMMARY"
+          Write-Host "================================================"
+          Write-Host "Run ID       : ${{ github.run_id }}"
+          Write-Host "Run attempt  : ${{ github.run_attempt }}"
+          Write-Host "Cache hit    : ${{ steps.cache-restore.outputs.cache-hit }}"
+          Write-Host "Cache key    : windows-test-cache-${{ github.ref_name }}"
+          Write-Host ""
+          Write-Host "To verify cache in GitHub:"
+          Write-Host "  Go to your repo -> Actions -> Caches"
+          Write-Host "  You should see: windows-test-cache-${{ github.ref_name }}"
+          Write-Host ""
+          Write-Host "To verify artifact in GitHub:"
+          Write-Host "  Go to this workflow run -> Artifacts section"
+          Write-Host "  You should see: windows-build-${{ github.run_id }}-attempt-${{ github.run_attempt }}"
+          Write-Host "================================================"
